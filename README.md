@@ -5,7 +5,7 @@ Cistac Duplikata je program napisan u C-u koji brise iste fajlove u folderu koji
 U programu mozes da izaberes folder koji hoces da cistis i mozes da izaberes opciju koja menja da li program gleda foldere u trenutnom folderu.
 
 
-![image](https://github.com/user-attachments/assets/027a59aa-d3d8-4d9b-a47e-bfe0dcf5ee16)
+![image](https://github.com/user-attachments/assets/de7e43d5-5e8a-4539-a59d-184f75ac4212)
 
 
 <div style="border: 1px solid #f39c12; padding: 1em; background-color: #fff8e1;">
