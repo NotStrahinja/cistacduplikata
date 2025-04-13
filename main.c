@@ -245,8 +245,18 @@ LRESULT CALLBACK WindowProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam)
                 MessageBoxA(hwnd, "Duplikati izbrisani. Pogledaj log file.", "Cistac Duplikata", MB_OK | MB_ICONINFORMATION);
             }
             break;
-        case WM_ERASEBKGND:
-            return TRUE;
+        case WM_CTLCOLORSTATIC:
+        {
+            HDC hdcStatic = (HDC)wParam;
+            SetBkMode(hdcStatic, TRANSPARENT);
+            return (INT_PTR)GetSysColorBrush(COLOR_WINDOW);
+        }
+        case WM_CTLCOLORBTN:
+        {
+            HDC hdcBtn = (HDC)wParam;
+            SetBkMode(hdcBtn, TRANSPARENT);
+            return (INT_PTR)GetSysColorBrush(COLOR_WINDOW);
+        }
         case WM_DESTROY:
             PostQuitMessage(0);
             break;
