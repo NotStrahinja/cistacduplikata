@@ -319,9 +319,9 @@ LRESULT CALLBACK WindowProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam)
             HDC hdc = (HDC)wParam;
             static HBRUSH hDarkBrush = NULL;
             if(!hDarkBrush)
-                hDarkBrush = CreateSolidBrush(RGB(41, 41, 41));
+                hDarkBrush = CreateSolidBrush(RGB(38, 38, 38));
             SetTextColor(hdc, RGB(255, 255, 255));
-            SetBkColor(hdc, RGB(41, 41, 41));
+            SetBkColor(hdc, RGB(38, 38, 38));
             return (INT_PTR)hDarkBrush;
         }
         break;
@@ -330,9 +330,9 @@ LRESULT CALLBACK WindowProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam)
             HDC hdc = (HDC)wParam;
             static HBRUSH hDarkBrush = NULL;
             if(!hDarkBrush)
-                hDarkBrush = CreateSolidBrush(RGB(41, 41, 41));
+                hDarkBrush = CreateSolidBrush(RGB(38, 38, 38));
             SetTextColor(hdc, RGB(255, 255, 255));
-            SetBkColor(hdc, RGB(41, 41, 41));
+            SetBkColor(hdc, RGB(38, 38, 38));
             return (INT_PTR)hDarkBrush;
         }
         break;
@@ -341,7 +341,7 @@ LRESULT CALLBACK WindowProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam)
             HDC hdc = (HDC)wParam;
             RECT rect;
             GetClientRect(hwnd, &rect);
-            FillRect(hdc, &rect, CreateSolidBrush(RGB(41, 41, 41)));
+            FillRect(hdc, &rect, CreateSolidBrush(RGB(38, 38, 38)));
             return 1;
         }
         break;
