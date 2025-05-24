@@ -397,6 +397,8 @@ LRESULT CALLBACK WindowProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam)
                                 MessageBoxA(NULL, errMsg, "Error", MB_OK);
                             }
                             hSettingsWnd = CreateWindowExA(0, "SettingsClass", "Postavke", WS_CAPTION | WS_POPUP, CW_USEDEFAULT, CW_USEDEFAULT, 300, 150, hwnd, NULL, GetModuleHandleA(NULL), NULL);
+                            BOOL value = TRUE;
+                            DwmSetWindowAttribute(hSettingsWnd, DWMWA_USE_IMMERSIVE_DARK_MODE, &value, sizeof(value));
                             hCloseBut = CreateWindowExA(0, "BUTTON", "Zatvori", WS_CHILD | WS_VISIBLE | BS_PUSHBUTTON, 225, 85, 60, 30, hSettingsWnd, (HMENU)6, GetModuleHandleA(NULL), NULL);
                             hGledajSF = CreateWindowExA(0, "BUTTON", "Gledaj subfoldere", WS_TABSTOP | WS_VISIBLE | WS_CHILD | BS_AUTOCHECKBOX | BS_NOTIFY, 10, 10, 145, 30, hSettingsWnd, (HMENU)3, GetModuleHandleA(NULL), NULL);
                             hKoristiEx = CreateWindowExA(0, "BUTTON", "Koristi ekstenzije", WS_TABSTOP | WS_VISIBLE | WS_CHILD | BS_AUTOCHECKBOX | BS_NOTIFY, 10, 40, 145, 30, hSettingsWnd, (HMENU)7, GetModuleHandleA(NULL), NULL);
