@@ -14,6 +14,39 @@
 #define DWMWA_USE_IMMERSIVE_DARK_MODE 20
 #endif
 
+#define MAX_EXTENSIONS 32
+#define MAX_EXT_LEN 16
+
+char extensions[MAX_EXTENSIONS][MAX_EXT_LEN];
+int ext_count = 0;
+
+void parse_extensions(const char* ext_string)
+{
+    ext_count = 0;
+
+    char buffer[256];
+    strncpy(buffer, ext_string, sizeof(buffer));
+    buffer[sizeof(buffer) - 1] = 0;
+
+    char *token = strtok(buffer, ";");
+    while(token != NULL && ext_count < MAX_EXTENSIONS)
+    {
+        if(token[0] == '.')
+            token++;
+
+        strncpy(extensions[ext_count], token, MAX_EXT_LEN - 1);
+        extensions[ext_count][MAX_EXT_LEN - 1] = 0;
+
+        for(char *p = extensions[ext_count]; *p; ++p)
+            *p = (char)tolower(*p);
+
+        ext_count++;
+        token = strtok(NULL, ";");
+    }
+}
+
+char exts[256] = "";
+
 #define LOG_FILE "duplikati_log.txt"
 
 typedef struct {
@@ -52,6 +85,40 @@ cleanup:
     if(hProv) CryptReleaseContext(hProv, 0);
     fclose(file);
     return result;
+}
+
+const char* get_file_ext(const char *filename)
+{
+    const char *dot = strrchr(filename, '.');
+    if(!dot || dot == filename) return NULL;
+
+    return dot + 1;
+}
+
+void str_to_lower(char *str)
+{
+    while(*str)
+    {
+        *str = tolower((unsigned char)*str);
+        str++;
+    }
+}
+
+BOOL extension_allowed(const char *ext)
+{
+    if(!ext) return FALSE;
+
+    char ext_lc[MAX_EXT_LEN];
+    strncpy(ext_lc, ext, MAX_EXT_LEN - 1);
+    ext_lc[MAX_EXT_LEN - 1] = '\0';
+    str_to_lower(ext_lc);
+
+    for(int i = 0; i < ext_count; i++)
+    {
+        if(strcmp(ext_lc, extensions[i]) == 0)
+            return TRUE;
+    }
+    return FALSE;
 }
 
 void scan_directory(const char *base_path, BOOL recursive)
@@ -113,6 +180,8 @@ HWND hInfo;
 HWND hPath;
 HWND hPokreni;
 HWND hGledajSF;
+HWND hKoristiEx;
+HWND hEditExt;
 HFONT hTitleFont;
 HFONT hFont;
 
@@ -138,6 +207,11 @@ int main(int argc, char **argv)
 
     HWND hwnd = CreateWindowExA(0, "DuplikatClass", "Cistac Duplikata", WS_CAPTION | WS_SYSMENU | WS_CLIPCHILDREN, CW_USEDEFAULT, CW_USEDEFAULT, 400, 200, NULL, NULL, GetModuleHandleA(NULL), NULL);
 
+    HMENU hMenu = CreateMenu();
+    AppendMenuA(hMenu, MF_STRING, 4, "&Postavke");
+    AppendMenuA(hMenu, MF_STRING, 5, "&Info");
+    SetMenu(hwnd, hMenu);
+
     BOOL value = TRUE;
     DwmSetWindowAttribute(hwnd, DWMWA_USE_IMMERSIVE_DARK_MODE, &value, sizeof(value));
 
@@ -145,7 +219,6 @@ int main(int argc, char **argv)
     hInfo = CreateWindowExA(0, "STATIC", "Klikni '...' da odaberes folder, pa pritisni 'Pokreni'.", WS_CHILD | WS_VISIBLE, 20, 50, 375, 30, hwnd, NULL, GetModuleHandleA(NULL), NULL);
     hTriTacke = CreateWindowExA(0, "BUTTON", "...", WS_TABSTOP | WS_VISIBLE | WS_CHILD | BS_PUSHBUTTON, 20, 80, 50, 30, hwnd, (HMENU)1, GetModuleHandleA(NULL), NULL);
     hPokreni = CreateWindowExA(0, "BUTTON", "Pokreni", WS_TABSTOP | WS_VISIBLE | WS_CHILD | BS_PUSHBUTTON, 250, 80, 100, 30, hwnd, (HMENU)2, GetModuleHandleA(NULL), NULL);
-    hGledajSF = CreateWindowExA(0, "BUTTON", "Gledaj subfoldere", WS_VISIBLE | WS_CHILD | BS_AUTOCHECKBOX | BS_NOTIFY, 90, 80, 145, 30, hwnd, (HMENU)3, GetModuleHandleA(NULL), NULL);
     hPath = CreateWindowExA(0, "STATIC", "Odabran folder: nijedan", WS_CHILD | WS_VISIBLE, 20, 125, 375, 30, hwnd, (HMENU)4, GetModuleHandleA(NULL), NULL);
 
     hTitleFont = CreateFont(26, 0, 0, 0, FW_BOLD, FALSE, FALSE, FALSE, DEFAULT_CHARSET, OUT_OUTLINE_PRECIS, CLIP_DEFAULT_PRECIS, CLEARTYPE_QUALITY, DEFAULT_PITCH | FF_DONTCARE, TEXT("Segoe UI"));
@@ -222,135 +295,262 @@ LRESULT OnCustomDraw(HWND hWnd, NMCUSTOMDRAW* pNMCD)
 
 LRESULT CALLBACK WindowProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam)
 {
-    switch(uMsg)
+    char className[256];
+    GetClassNameA(hwnd, className, sizeof(className));
+    HWND hCloseBut;
+    HWND hSettingsWnd;
+    static BOOL g_bGledajSubfoldere = FALSE;
+    static BOOL useExtensions = FALSE;
+    if(!strcmp(className, "DuplikatClass"))
     {
-        case WM_NOTIFY:
-            {
-                LRESULT lResult = 0;
-                switch(((NMHDR*)lParam)->code)
+        switch(uMsg)
+        {
+            case WM_COMMAND:
+                if(LOWORD(wParam) == 1 && HIWORD(wParam) == BN_CLICKED)
                 {
-                    case NM_CUSTOMDRAW:
+                    BROWSEINFOA bi = {0};
+                    char szFolder[MAX_PATH];
+
+                    bi.lpszTitle = "Odaberi folder";
+                    bi.ulFlags = BIF_RETURNONLYFSDIRS | BIF_NEWDIALOGSTYLE;
+                    bi.hwndOwner = hwnd;
+
+                    LPITEMIDLIST pidl = SHBrowseForFolderA(&bi);
+                    if(pidl != NULL)
+                    {
+                        if(SHGetPathFromIDListA(pidl, szFolder))
                         {
-                            if(3 == ((NMHDR*)lParam)->idFrom)
+                            strcpy(pathStr, szFolder);
+
+                            char labelText[MAX_PATH + 32];
+                            snprintf(labelText, sizeof(labelText), "Odabran folder: %s", (strlen(szFolder) > 0) ? szFolder : "nijedan");
+                            SetWindowTextA(hPath, labelText);
+                        }
+
+                        CoTaskMemFree(pidl);
+                    }
+                }
+                if(LOWORD(wParam) == 2 && HIWORD(wParam) == BN_CLICKED)
+                {
+                    if(strlen(pathStr) == 0) break;
+                    FILE *log = fopen(LOG_FILE, "w");
+                    if(!log)
+                    {
+                        printf("Nemoguce otvoriti log file.\n");
+                        return 1;
+                    }
+
+                    BOOL recursive = g_bGledajSubfoldere;
+                    BOOL ext = useExtensions;
+
+                    files = NULL;
+                    file_count = 0;
+                    file_capacity = 0;
+
+                    scan_directory(pathStr, recursive);
+
+                    for(int i = 0; i < file_count; ++i)
+                    {
+                        if(!files[i].path) continue;
+                        for(int j = i + 1; j < file_count; ++j)
+                        {
+                            if(!files[j].path) continue;
+
+                            if(hashes_equal(files[i].hash, files[j].hash))
                             {
-                                NMHDR* pnm = (LPNMHDR)lParam;                
-                                lResult = OnCustomDraw(((NMHDR*)lParam)->hwndFrom, (LPNMCUSTOMDRAW)pnm);
+                                if(DeleteFileA(files[j].path))
+                                    fprintf(log, "Izbrisan duplikat: %s (isti kao %s)\n", files[j].path, files[i].path);
+                                else
+                                    fprintf(log, "Nemoguce obrisati: %s\n", files[j].path);
+                                free(files[j].path);
+                                files[j].path = NULL;
                             }
                         }
-                        break;
-                    default:
-                        return DefWindowProc(hwnd, uMsg, wParam, lParam);
-                }
-                return lResult;
-            }
-        case WM_COMMAND:
-            if(LOWORD(wParam) == 1 && HIWORD(wParam) == BN_CLICKED)
-            {
-                BROWSEINFOA bi = {0};
-                char szFolder[MAX_PATH];
-
-                bi.lpszTitle = "Odaberi folder";
-                bi.ulFlags = BIF_RETURNONLYFSDIRS | BIF_NEWDIALOGSTYLE;
-                bi.hwndOwner = hwnd;
-
-                LPITEMIDLIST pidl = SHBrowseForFolderA(&bi);
-                if(pidl != NULL)
-                {
-                    if(SHGetPathFromIDListA(pidl, szFolder))
-                    {
-                        strcpy(pathStr, szFolder);
-
-                        char labelText[MAX_PATH + 32];
-                        snprintf(labelText, sizeof(labelText), "Odabran folder: %s", (strlen(szFolder) > 0) ? szFolder : "nijedan");
-                        SetWindowTextA(hPath, labelText);
                     }
 
-                    CoTaskMemFree(pidl);
+                    for(int i = 0; i < file_count; ++i)
+                        free(files[i].path);
+
+                    free(files);
+
+                    fclose(log);
+                    MessageBoxA(hwnd, "Duplikati izbrisani. Pogledaj log file.", "Cistac Duplikata", MB_OK | MB_ICONINFORMATION);
                 }
-            }
-            if(LOWORD(wParam) == 2 && HIWORD(wParam) == BN_CLICKED)
-            {
-                if(strlen(pathStr) == 0) break;
-                FILE *log = fopen(LOG_FILE, "w");
-                if(!log)
+                if(HIWORD(wParam) == 0)
                 {
-                    printf("Nemoguce otvoriti log file.\n");
+                    switch(LOWORD(wParam))
+                    {
+                        case 4:
+                            WNDCLASSEXA wc = {0};
+                            wc.cbSize = sizeof(WNDCLASSEXA);
+                            wc.lpfnWndProc = WindowProc;
+                            wc.hInstance = GetModuleHandle(NULL);
+                            wc.lpszClassName = "SettingsClass";
+                            wc.hCursor = LoadCursorA(NULL, IDC_ARROW);
+                            wc.hIcon = LoadIconA(GetModuleHandleA(NULL), MAKEINTRESOURCE(101));
+                            wc.hbrBackground = (HBRUSH)(COLOR_WINDOW + 1);
+                            HRESULT h = RegisterClassExA(&wc);
+                            if(FAILED(h))
+                            {
+                                char errMsg[256];
+                                sprintf(errMsg, "Error: %08x", h);
+                                MessageBoxA(NULL, errMsg, "Error", MB_OK);
+                            }
+                            hSettingsWnd = CreateWindowExA(0, "SettingsClass", "Postavke", WS_CAPTION | WS_POPUP, CW_USEDEFAULT, CW_USEDEFAULT, 300, 150, hwnd, NULL, GetModuleHandleA(NULL), NULL);
+                            hCloseBut = CreateWindowExA(0, "BUTTON", "Zatvori", WS_CHILD | WS_VISIBLE | BS_PUSHBUTTON, 225, 85, 60, 30, hSettingsWnd, (HMENU)6, GetModuleHandleA(NULL), NULL);
+                            hGledajSF = CreateWindowExA(0, "BUTTON", "Gledaj subfoldere", WS_TABSTOP | WS_VISIBLE | WS_CHILD | BS_AUTOCHECKBOX | BS_NOTIFY, 10, 10, 145, 30, hSettingsWnd, (HMENU)3, GetModuleHandleA(NULL), NULL);
+                            hKoristiEx = CreateWindowExA(0, "BUTTON", "Koristi ekstenzije", WS_TABSTOP | WS_VISIBLE | WS_CHILD | BS_AUTOCHECKBOX | BS_NOTIFY, 10, 40, 145, 30, hSettingsWnd, (HMENU)7, GetModuleHandleA(NULL), NULL);
+                            hEditExt = CreateWindowExA(0, "EDIT", "", WS_VISIBLE | WS_CHILD | WS_BORDER | ES_AUTOHSCROLL, 10, 85, 200, 30, hSettingsWnd, (HMENU)8, GetModuleHandleA(NULL), NULL);
+
+                            SetWindowTheme(hCloseBut, L"DarkMode_Explorer", NULL);
+                            SetWindowTheme(hGledajSF, L"DarkMode_Explorer", NULL);
+                            SetWindowTheme(hKoristiEx, L"DarkMode_Explorer", NULL);
+                            SetWindowTheme(hEditExt, L"DarkMode_Explorer", NULL);
+
+                            SendMessage(hGledajSF, BM_SETCHECK, g_bGledajSubfoldere ? BST_CHECKED : BST_UNCHECKED, 0);
+                            SendMessage(hKoristiEx, BM_SETCHECK, useExtensions ? BST_CHECKED : BST_UNCHECKED, 0);
+                            SetWindowTextA(hEditExt, exts);
+                            SendMessage(hCloseBut, WM_SETFONT, (WPARAM)hFont, TRUE);
+                            SendMessage(hGledajSF, WM_SETFONT, (WPARAM)hFont, TRUE);
+                            SendMessage(hKoristiEx, WM_SETFONT, (WPARAM)hFont, TRUE);
+                            SendMessage(hEditExt, WM_SETFONT, (WPARAM)hFont, TRUE);
+                            ShowWindow(hSettingsWnd, SW_SHOW);
+                            UpdateWindow(hSettingsWnd);
+                            break;
+                        case 5:
+                            MessageBoxA(NULL, "Napravio: Strahinja Adamov", "Info", MB_OK | MB_ICONINFORMATION);
+                            break;
+                    }
+                }
+                break;
+            case WM_CTLCOLORSTATIC:
+                {
+                    HDC hdc = (HDC)wParam;
+                    static HBRUSH hDarkBrush = NULL;
+                    if(!hDarkBrush)
+                        hDarkBrush = CreateSolidBrush(RGB(38, 38, 38));
+                    SetTextColor(hdc, RGB(255, 255, 255));
+                    SetBkColor(hdc, RGB(38, 38, 38));
+                    return (INT_PTR)hDarkBrush;
+                }
+                break;
+            case WM_CTLCOLORBTN:
+                {
+                    HDC hdc = (HDC)wParam;
+                    static HBRUSH hDarkBrush = NULL;
+                    if(!hDarkBrush)
+                        hDarkBrush = CreateSolidBrush(RGB(38, 38, 38));
+                    SetTextColor(hdc, RGB(255, 255, 255));
+                    SetBkColor(hdc, RGB(38, 38, 38));
+                    return (INT_PTR)hDarkBrush;
+                }
+                break;
+            case WM_ERASEBKGND:
+                {
+                    HDC hdc = (HDC)wParam;
+                    RECT rect;
+                    GetClientRect(hwnd, &rect);
+                    FillRect(hdc, &rect, CreateSolidBrush(RGB(38, 38, 38)));
                     return 1;
                 }
-
-                BOOL recursive = (IsDlgButtonChecked(hwnd, 3) == BST_CHECKED);
-
-                files = NULL;
-                file_count = 0;
-                file_capacity = 0;
-
-                scan_directory(pathStr, recursive);
-
-                for(int i = 0; i < file_count; ++i)
+                break;
+            case WM_DESTROY:
+                PostQuitMessage(0);
+                break;
+            case WM_CLOSE:
+                DestroyWindow(hwnd);
+                break;
+        }
+    }
+    else if(!strcmp(className, "SettingsClass"))
+    {
+        switch(uMsg)
+        {
+            case WM_NOTIFY:
                 {
-                    if(!files[i].path) continue;
-                    for(int j = i + 1; j < file_count; ++j)
+                    LRESULT lResult = 0;
+                    switch(((NMHDR*)lParam)->code)
                     {
-                        if(!files[j].path) continue;
-
-                        if(hashes_equal(files[i].hash, files[j].hash))
-                        {
-                            if(DeleteFileA(files[j].path))
-                                fprintf(log, "Izbrisan duplikat: %s (isti kao %s)\n", files[j].path, files[i].path);
-                            else
-                                fprintf(log, "Nemoguce obrisati: %s\n", files[j].path);
-                            free(files[j].path);
-                            files[j].path = NULL;
-                        }
+                        case NM_CUSTOMDRAW:
+                            {
+                                if(3 == ((NMHDR*)lParam)->idFrom || 7 == ((NMHDR*)lParam)->idFrom)
+                                {
+                                    NMHDR* pnm = (LPNMHDR)lParam;                
+                                    lResult = OnCustomDraw(((NMHDR*)lParam)->hwndFrom, (LPNMCUSTOMDRAW)pnm);
+                                }
+                            }
+                            break;
+                        default:
+                            return DefWindowProc(hwnd, uMsg, wParam, lParam);
                     }
+                    return lResult;
                 }
-
-                for(int i = 0; i < file_count; ++i)
-                    free(files[i].path);
-
-                free(files);
-
-                fclose(log);
-                MessageBoxA(hwnd, "Duplikati izbrisani. Pogledaj log file.", "Cistac Duplikata", MB_OK | MB_ICONINFORMATION);
-            }
-            break;
-        case WM_CTLCOLORSTATIC:
-        {
-            HDC hdc = (HDC)wParam;
-            static HBRUSH hDarkBrush = NULL;
-            if(!hDarkBrush)
-                hDarkBrush = CreateSolidBrush(RGB(38, 38, 38));
-            SetTextColor(hdc, RGB(255, 255, 255));
-            SetBkColor(hdc, RGB(38, 38, 38));
-            return (INT_PTR)hDarkBrush;
+            case WM_COMMAND:
+                if(LOWORD(wParam) == 3 && HIWORD(wParam) == BN_CLICKED)
+                {
+                    g_bGledajSubfoldere = (SendMessage(hGledajSF, BM_GETCHECK, 0, 0) == BST_CHECKED);
+                }
+                else if(LOWORD(wParam) == 7 && HIWORD(wParam) == BN_CLICKED)
+                {
+                    useExtensions = (SendMessage(hKoristiEx, BM_GETCHECK, 0, 0) == BST_CHECKED);
+                }
+                else if(LOWORD(wParam) == 6 && HIWORD(wParam) == BN_CLICKED)
+                {
+                    g_bGledajSubfoldere = (SendMessage(hGledajSF, BM_GETCHECK, 0, 0) == BST_CHECKED);
+                    useExtensions = (SendMessage(hKoristiEx, BM_GETCHECK, 0, 0) == BST_CHECKED);
+                    GetWindowTextA(hEditExt, exts, sizeof(exts));
+                    DestroyWindow(hwnd);
+                }
+                break;
+            case WM_CTLCOLORSTATIC:
+                {
+                    HDC hdc = (HDC)wParam;
+                    static HBRUSH hDarkBrush = NULL;
+                    if(!hDarkBrush)
+                        hDarkBrush = CreateSolidBrush(RGB(38, 38, 38));
+                    SetTextColor(hdc, RGB(255, 255, 255));
+                    SetBkColor(hdc, RGB(38, 38, 38));
+                    return (INT_PTR)hDarkBrush;
+                }
+                break;
+            case WM_CTLCOLOREDIT:
+                {
+                    HDC hdc = (HDC)wParam;
+                    static HBRUSH hDarkBrush = NULL;
+                    if(!hDarkBrush)
+                        hDarkBrush = CreateSolidBrush(RGB(38, 38, 38));
+                    SetTextColor(hdc, RGB(255, 255, 255));
+                    SetBkColor(hdc, RGB(38, 38, 38));
+                    return (INT_PTR)hDarkBrush;
+                }
+                break;
+            case WM_CTLCOLORBTN:
+                {
+                    HDC hdc = (HDC)wParam;
+                    static HBRUSH hDarkBrush = NULL;
+                    if(!hDarkBrush)
+                        hDarkBrush = CreateSolidBrush(RGB(38, 38, 38));
+                    SetTextColor(hdc, RGB(255, 255, 255));
+                    SetBkColor(hdc, RGB(38, 38, 38));
+                    return (INT_PTR)hDarkBrush;
+                }
+                break;
+            case WM_ERASEBKGND:
+                {
+                    HDC hdc = (HDC)wParam;
+                    RECT rect;
+                    GetClientRect(hwnd, &rect);
+                    FillRect(hdc, &rect, CreateSolidBrush(RGB(38, 38, 38)));
+                    return 1;
+                }
+                break;
+            case WM_DESTROY:
+                DestroyWindow(hSettingsWnd);
+                break;
+            case WM_CLOSE:
+                DestroyWindow(hSettingsWnd);
+                break;
         }
-        break;
-        case WM_CTLCOLORBTN:
-        {
-            HDC hdc = (HDC)wParam;
-            static HBRUSH hDarkBrush = NULL;
-            if(!hDarkBrush)
-                hDarkBrush = CreateSolidBrush(RGB(38, 38, 38));
-            SetTextColor(hdc, RGB(255, 255, 255));
-            SetBkColor(hdc, RGB(38, 38, 38));
-            return (INT_PTR)hDarkBrush;
-        }
-        break;
-        case WM_ERASEBKGND:
-        {
-            HDC hdc = (HDC)wParam;
-            RECT rect;
-            GetClientRect(hwnd, &rect);
-            FillRect(hdc, &rect, CreateSolidBrush(RGB(38, 38, 38)));
-            return 1;
-        }
-        break;
-        case WM_DESTROY:
-            PostQuitMessage(0);
-            break;
-        case WM_CLOSE:
-            DestroyWindow(hwnd);
-            break;
     }
     return DefWindowProc(hwnd, uMsg, wParam, lParam);
 }
