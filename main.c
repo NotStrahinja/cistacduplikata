@@ -372,7 +372,7 @@ LRESULT CALLBACK WindowProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam)
                             UpdateWindow(hSettingsWnd);
                             break;
                         case 5:
-                            MessageBoxA(NULL, "Napravio: Strahinja Adamov", "Info", MB_OK | MB_ICONINFORMATION);
+                            MessageBoxA(NULL, "Napravio: Strahinja Adamov\nVerzija: 1.4", "Info", MB_OK | MB_ICONINFORMATION);
                             break;
                     }
                 }
